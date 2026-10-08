@@ -1,8 +1,10 @@
-import json
 import csv
-import click
+import json
 import logging
 from pathlib import Path
+
+import click
+
 from fetcher import fetch_news
 from logger_setup import setup_logging
 from settings import settings
@@ -13,18 +15,21 @@ logger = logging.getLogger(__name__)
 
 
 @click.command()
-@click.option('--tag', type=str, default='', help='Фильтр по тегу в заголовке или URL')
-@click.option('--limit', type=int, default=None, help='Количество статей (по умолчанию из .env)')
-@click.option('--output', type=click.Path(writable=True, path_type=str),
-              default=None, help='Путь для сохранения (по умолчанию из .env)')
-@click.option('--format', 'fmt', type=click.Choice(['json', 'csv']), default='json',
-              help='Формат вывода: json или csv')
+@click.option("--tag", type=str, default="", help="Фильтр по тегу в заголовке или URL")
+@click.option("--limit", type=int, default=None, help="Количество статей (по умолчанию из .env)")
+@click.option(
+    "--output",
+    type=click.Path(writable=True, path_type=str),
+    default=None,
+    help="Путь для сохранения (по умолчанию из .env)",
+)
+@click.option("--format", "fmt", type=click.Choice(["json", "csv"]), default="json", help="Формат вывода: json или csv")
 def fetch(tag: str, limit: int | None, output: str | None, fmt: str):
     """CLI-агрегатор IT-новостей с Hacker News."""
     effective_output = output or f"{settings.output_dir}/news.{fmt}"
-    
+
     results = fetch_news(tag=tag, limit=limit)
-    
+
     if not results:
         click.secho("❌ Статьи не найдены. Попробуйте другой тег или увеличьте лимит.", fg="red")
         logger.warning("Поиск не дал результатов (tag='%s', limit=%s)", tag, limit)
@@ -33,7 +38,7 @@ def fetch(tag: str, limit: int | None, output: str | None, fmt: str):
     output_path = Path(effective_output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if fmt == 'csv':
+    if fmt == "csv":
         _save_csv(results, output_path)
     else:
         _save_json(results, output_path)
@@ -49,23 +54,25 @@ def fetch(tag: str, limit: int | None, output: str | None, fmt: str):
 
 
 def _save_json(articles, path: Path):
-    serialized = [a.model_dump(mode='json') for a in articles]
-    path.write_text(json.dumps(serialized, indent=2, ensure_ascii=False), encoding='utf-8')
+    serialized = [a.model_dump(mode="json") for a in articles]
+    path.write_text(json.dumps(serialized, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def _save_csv(articles, path: Path):
-    with open(path, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.DictWriter(f, fieldnames=['title', 'url', 'author', 'created_at'])
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=["title", "url", "author", "created_at"])
         writer.writeheader()
         for a in articles:
-            writer.writerow({
-                'title': a.title,
-                'url': str(a.url),
-                'author': a.author,
-                'created_at': a.created_at.strftime('%d.%m.%Y %H:%M')
-            })
+            writer.writerow(
+                {
+                    "title": a.title,
+                    "url": str(a.url),
+                    "author": a.author,
+                    "created_at": a.created_at.strftime("%d.%m.%Y %H:%M"),
+                }
+            )
     logger.debug("CSV сохранен: %d строк", len(articles))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     fetch()
