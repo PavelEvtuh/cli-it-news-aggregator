@@ -1,0 +1,2 @@
+2026-10-08 22:41:20 | INFO     | httpx | HTTP Request: GET https://hn.algolia.com/api/v1/search_by_date?hitsPerPage=9 "HTTP/1.1 200 OK"
+2026-10-08 22:41:20 | INFO     | __main__ | Результаты сохранены в output\news.csv (формат: csv)

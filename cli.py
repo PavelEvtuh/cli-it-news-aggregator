@@ -1,45 +1,70 @@
 import json
+import csv
 import click
+import logging
 from pathlib import Path
 from fetcher import fetch_news
+from logger_setup import setup_logging
+from settings import settings
+
+# Настраиваем логирование ОДИН РАЗ при старте
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 @click.command()
-@click.option('--tag', type=str, default='', help='Фильтр по тегу в заголовке или URL статьи')
-@click.option('--limit', type=int, default=5, help='Количество статей для вывода (по умолчанию 5)')
-@click.option(
-    '--output', 
-    type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=str),
-    default='output/news.json',
-    help='Путь для сохранения результатов (JSON)'
-)
-def fetch(tag, limit, output):
+@click.option('--tag', type=str, default='', help='Фильтр по тегу в заголовке или URL')
+@click.option('--limit', type=int, default=None, help='Количество статей (по умолчанию из .env)')
+@click.option('--output', type=click.Path(writable=True, path_type=str),
+              default=None, help='Путь для сохранения (по умолчанию из .env)')
+@click.option('--format', 'fmt', type=click.Choice(['json', 'csv']), default='json',
+              help='Формат вывода: json или csv')
+def fetch(tag: str, limit: int | None, output: str | None, fmt: str):
     """CLI-агрегатор IT-новостей с Hacker News."""
+    effective_output = output or f"{settings.output_dir}/news.{fmt}"
+    
     results = fetch_news(tag=tag, limit=limit)
-    print(f"DEBUG: fetcher вернул {len(results)} статей")
+    
     if not results:
         click.secho("❌ Статьи не найдены. Попробуйте другой тег или увеличьте лимит.", fg="red")
+        logger.warning("Поиск не дал результатов (tag='%s', limit=%s)", tag, limit)
         return
-    
-    # ✅ Сериализация Pydantic моделей в JSON-совместимые словари
-    serialized = [article.model_dump(mode='json') for article in results]
-    json_string = json.dumps(serialized, indent=2, ensure_ascii=False)
-    
-    # ✅ Безопасное создание директории и запись файла
-    output_path = Path(output)
+
+    output_path = Path(effective_output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json_string, encoding='utf-8')
-    
-    # ✅ Вывод результатов в консоль
+
+    if fmt == 'csv':
+        _save_csv(results, output_path)
+    else:
+        _save_json(results, output_path)
+
     click.secho(f"✅ Найдено {len(results)} статей:\n", fg="green")
     for i, article in enumerate(results, 1):
         click.echo(f"{i}. 📰 {article.title}")
         click.echo(f"   🔗 {article.url}")
-        click.echo(f"   👤 {article.author} |  {article.created_at:%d.%m.%Y %H:%M}")
+        click.echo(f"   👤 {article.author} | {article.created_at:%d.%m.%Y %H:%M}")
         click.echo("-" * 60)
-    
-    # ✅ Подтверждение сохранения
     click.secho(f"\n💾 Сохранено в: {output_path}", fg="cyan")
+    logger.info("Результаты сохранены в %s (формат: %s)", output_path, fmt)
+
+
+def _save_json(articles, path: Path):
+    serialized = [a.model_dump(mode='json') for a in articles]
+    path.write_text(json.dumps(serialized, indent=2, ensure_ascii=False), encoding='utf-8')
+
+
+def _save_csv(articles, path: Path):
+    with open(path, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.DictWriter(f, fieldnames=['title', 'url', 'author', 'created_at'])
+        writer.writeheader()
+        for a in articles:
+            writer.writerow({
+                'title': a.title,
+                'url': str(a.url),
+                'author': a.author,
+                'created_at': a.created_at.strftime('%d.%m.%Y %H:%M')
+            })
+    logger.debug("CSV сохранен: %d строк", len(articles))
 
 
 if __name__ == '__main__':
